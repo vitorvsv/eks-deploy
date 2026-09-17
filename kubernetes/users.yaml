@@ -60,10 +60,13 @@ spec:
     spec:
       containers:
         - name: users-api
-          image: vitorvsv/eks-deploy-users-api:latest
+          image: eks-deploy-users-api:latest
           env:
             - name: MONGODB_CONNECTION_URI
-              value: ''
+              valueFrom:
+                secretKeyRef:
+                  name: users-api
+                  key: MONGODB_CONNECTION_URI
             - name: AUTH_API_ADDRESS
               value: 'auth-service.default:3000'
           volumeMounts:

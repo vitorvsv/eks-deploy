@@ -27,7 +27,10 @@ spec:
     spec:
       containers:
         - name: auth-api
-          image: vitorvsv/eks-deploy-auth-api:latest
+          image: eks-deploy-auth-api:latest
           env:
             - name: TOKEN_KEY
-              value: 'shouldbeverysecure'
+              valueFrom:
+                secretKeyRef:
+                  name: auth-api
+                  key: TOKEN_KEY

@@ -1,16 +1,9 @@
 locals {
   ecr_repositories = [
-    "eks-deploy-auth-api",
-    "eks-deploy-users-api",
-    "eks-deploy-tasks-api",
+    "${local.project}-auth-api",
+    "${local.project}-users-api",
+    "${local.project}-tasks-api",
   ]
-
-  common_tags = {
-    Environment = "dev"
-    Project     = "eks-deploy"
-    Owner       = "vitorvsv"
-    CostCenter  = "Engineering"
-  }
 }
 
 resource "aws_ecr_repository" "this" {
@@ -27,7 +20,7 @@ resource "aws_ecr_repository" "this" {
     encryption_type = "AES256"
   }
 
-  tags = local.common_tags
+  tags = local.tags
 }
 
 resource "aws_ecr_lifecycle_policy" "this" {

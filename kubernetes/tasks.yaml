@@ -27,9 +27,12 @@ spec:
     spec:
       containers:
         - name: tasks-api
-          image: vitorvsv/eks-deploy-tasks-api:latest
+          image: eks-deploy-tasks-api:latest
           env:
             - name: MONGODB_CONNECTION_URI
-              value: ''
+              valueFrom:
+                secretKeyRef:
+                  name: tasks-api
+                  key: MONGODB_CONNECTION_URI
             - name: AUTH_API_ADDRESS
               value: 'auth-service.default:3000'

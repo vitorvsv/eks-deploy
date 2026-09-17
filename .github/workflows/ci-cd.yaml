@@ -1,0 +1,112 @@
+name: CI/CD
+
+on: workflow_dispatch
+
+permissions:
+  id-token: write # This is required for requesting the JWT
+  contents: read # This is required for actions/checkout
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    environment: development
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - service: auth-api
+            ecr_repository: eks-deploy-auth-api
+          - service: users-api
+            ecr_repository: eks-deploy-users-api
+          - service: tasks-api
+            ecr_repository: eks-deploy-tasks-api
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      - name: Authenticate to AWS
+        uses: aws-actions/configure-aws-credentials@v5
+        with:
+          role-to-assume: ${{ secrets.AWS_OIDC_ROLE_ARN }}
+          role-session-name: ${{ github.run_id }}-${{ matrix.service }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build, tag and push image
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          ECR_REPOSITORY: ${{ matrix.ecr_repository }}
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          docker build \
+            -t "$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" \
+            -t "$ECR_REGISTRY/$ECR_REPOSITORY:latest" \
+            "${{ matrix.service }}"
+
+          docker push "$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG"
+          docker push "$ECR_REGISTRY/$ECR_REPOSITORY:latest"
+
+  deploy:
+    runs-on: ubuntu-latest
+    environment: development
+    needs: build
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      - name: Authenticate to AWS
+        uses: aws-actions/configure-aws-credentials@v5
+        with:
+          role-to-assume: ${{ secrets.AWS_OIDC_ROLE_ARN }}
+          role-session-name: ${{ github.run_id }}-deploy
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Install kubectl
+        uses: azure/setup-kubectl@v4
+
+      - name: Configure kubectl for EKS
+        run: |
+          aws eks update-kubeconfig --name ${{ secrets.EKS_CLUSTER_NAME }} --region ${{ vars.AWS_REGION }}
+
+      - name: Sync Kubernetes secrets from AWS Secrets Manager
+        run: |
+          set -euo pipefail
+
+          fetch_secret() {
+            aws secretsmanager get-secret-value --secret-id "$1" --query SecretString --output text
+          }
+
+          kubectl create secret generic auth-api \
+            --from-literal=TOKEN_KEY="$(fetch_secret eks-deploy/auth-api/token-key)" \
+            --dry-run=client -o yaml | kubectl apply -f -
+
+          kubectl create secret generic users-api \
+            --from-literal=MONGODB_CONNECTION_URI="$(fetch_secret eks-deploy/users-api/mongodb-connection-uri)" \
+            --dry-run=client -o yaml | kubectl apply -f -
+
+          kubectl create secret generic tasks-api \
+            --from-literal=MONGODB_CONNECTION_URI="$(fetch_secret eks-deploy/tasks-api/mongodb-connection-uri)" \
+            --dry-run=client -o yaml | kubectl apply -f -
+
+      - name: Deploy microservices to EKS
+        run: |
+          set -euo pipefail
+
+          ACCOUNT_ID="$(aws sts get-caller-identity --query Account --output text)"
+          ECR_REGISTRY="${ACCOUNT_ID}.dkr.ecr.${{ vars.AWS_REGION }}.amazonaws.com"
+          IMAGE_TAG="${{ github.sha }}"
+
+          sed -i "s|image: eks-deploy-auth-api:.*|image: ${ECR_REGISTRY}/eks-deploy-auth-api:${IMAGE_TAG}|g" kubernetes/auth.yaml
+          sed -i "s|image: eks-deploy-users-api:.*|image: ${ECR_REGISTRY}/eks-deploy-users-api:${IMAGE_TAG}|g" kubernetes/users.yaml
+          sed -i "s|image: eks-deploy-tasks-api:.*|image: ${ECR_REGISTRY}/eks-deploy-tasks-api:${IMAGE_TAG}|g" kubernetes/tasks.yaml
+
+          kubectl apply -f kubernetes/auth.yaml
+          kubectl apply -f kubernetes/users.yaml
+          kubectl apply -f kubernetes/tasks.yaml
+
+          kubectl rollout status deployment/auth-deployment --timeout=300s
+          kubectl rollout status deployment/users-deployment --timeout=300s
+          kubectl rollout status deployment/tasks-deployment --timeout=300s
