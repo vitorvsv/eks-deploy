@@ -98,10 +98,20 @@ jobs:
           ACCOUNT_ID="$(aws sts get-caller-identity --query Account --output text)"
           ECR_REGISTRY="${ACCOUNT_ID}.dkr.ecr.${{ vars.AWS_REGION }}.amazonaws.com"
           IMAGE_TAG="${{ github.sha }}"
+          EFS_ID="$(aws efs describe-file-systems \
+            --creation-token eks-deploy-efs \
+            --query 'FileSystems[0].FileSystemId' \
+            --output text)"
+
+          if [ -z "$EFS_ID" ] || [ "$EFS_ID" = "None" ]; then
+            echo "EFS file system with creation token eks-deploy-efs was not found"
+            exit 1
+          fi
 
           sed -i "s|image: eks-deploy-auth-api:.*|image: ${ECR_REGISTRY}/eks-deploy-auth-api:${IMAGE_TAG}|g" kubernetes/auth.yaml
           sed -i "s|image: eks-deploy-users-api:.*|image: ${ECR_REGISTRY}/eks-deploy-users-api:${IMAGE_TAG}|g" kubernetes/users.yaml
           sed -i "s|image: eks-deploy-tasks-api:.*|image: ${ECR_REGISTRY}/eks-deploy-tasks-api:${IMAGE_TAG}|g" kubernetes/tasks.yaml
+          sed -i "s|fileSystemId: EFS_FILE_SYSTEM_ID|fileSystemId: ${EFS_ID}|g" kubernetes/users.yaml
 
           kubectl apply -f kubernetes/auth.yaml
           kubectl apply -f kubernetes/users.yaml

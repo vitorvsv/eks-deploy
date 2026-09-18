@@ -82,6 +82,12 @@ resource "aws_iam_role_policy" "github_actions" {
           aws_secretsmanager_secret.tasks_api_mongodb.arn,
         ]
       },
+      {
+        Sid      = "EfsDescribe"
+        Effect   = "Allow"
+        Action   = ["elasticfilesystem:DescribeFileSystems"]
+        Resource = "*"
+      },
     ]
   })
 }
