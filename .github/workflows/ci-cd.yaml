@@ -113,6 +113,23 @@ jobs:
           sed -i "s|image: eks-deploy-tasks-api:.*|image: ${ECR_REGISTRY}/eks-deploy-tasks-api:${IMAGE_TAG}|g" kubernetes/tasks.yaml
           sed -i "s|fileSystemId: EFS_FILE_SYSTEM_ID|fileSystemId: ${EFS_ID}|g" kubernetes/users.yaml
 
+          # StorageClass.parameters is immutable; delete so apply can recreate efs-sc.
+          kubectl delete storageclass efs-sc --ignore-not-found=true
+
+          if kubectl get pvc efs-pvc >/dev/null 2>&1; then
+            PV_NAME="$(kubectl get pvc efs-pvc -o jsonpath='{.spec.volumeName}')"
+            VOLUME_HANDLE=""
+            if [ -n "$PV_NAME" ]; then
+              VOLUME_HANDLE="$(kubectl get pv "$PV_NAME" -o jsonpath='{.spec.csi.volumeHandle}' 2>/dev/null || true)"
+            fi
+            if [ -z "$VOLUME_HANDLE" ] || [ "${VOLUME_HANDLE#${EFS_ID}}" = "$VOLUME_HANDLE" ]; then
+              kubectl delete pvc efs-pvc --wait=true --ignore-not-found=true
+              if [ -n "$PV_NAME" ]; then
+                kubectl delete pv "$PV_NAME" --ignore-not-found=true
+              fi
+            fi
+          fi
+
           kubectl apply -f kubernetes/auth.yaml
           kubectl apply -f kubernetes/users.yaml
           kubectl apply -f kubernetes/tasks.yaml
