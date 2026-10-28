@@ -155,6 +155,41 @@ const verifyUser = async (req, res, next) => {
   }
 };
 
+const getUsers = async (req, res, next) => {
+  try {
+    const users = await User.find().select('-password');
+    res.status(200).json({ users: users.map((user) => user.toObject()) });
+  } catch (err) {
+    next(createError(err.message || 'Failed to list users.', 500));
+  }
+};
+
+const updateUser = async (req, res, next) => {
+  const userId = req.params.id;
+  const email = req.body.email;
+
+  // Allowlist: only `email` can be updated. Any other field in the body is ignored.
+  if (typeof email !== 'string' || email.trim().length === 0 || !email.includes('@')) {
+    return next(createError('Invalid email.', 422));
+  }
+
+  try {
+    const updatedUser = await User.findByIdAndUpdate(
+      userId,
+      { $set: { email: email.trim() } },
+      { new: true }
+    ).select('-password');
+
+    if (!updatedUser) {
+      return next(createError('User not found.', 404));
+    }
+
+    res.status(200).json({ message: 'User updated.', user: updatedUser.toObject() });
+  } catch (err) {
+    next(createError(err.message || 'Failed to update user.', 500));
+  }
+};
+
 const getLogs = (req, res, next) => {
   fs.readFile(path.join('/app', 'users', 'users-log.txt'), (err, data) => {
     if (err) {
@@ -168,4 +203,6 @@ const getLogs = (req, res, next) => {
 
 exports.createUser = createUser;
 exports.verifyUser = verifyUser;
+exports.getUsers = getUsers;
+exports.updateUser = updateUser;
 exports.getLogs = getLogs;
