@@ -155,6 +155,15 @@ const verifyUser = async (req, res, next) => {
   }
 };
 
+const getUsers = async (req, res, next) => {
+  try {
+    const users = await User.find().select('-password');
+    res.status(200).json({ users: users.map((user) => user.toObject()) });
+  } catch (err) {
+    next(createError(err.message || 'Failed to list users.', 500));
+  }
+};
+
 const getLogs = (req, res, next) => {
   fs.readFile(path.join('/app', 'users', 'users-log.txt'), (err, data) => {
     if (err) {
@@ -168,4 +177,5 @@ const getLogs = (req, res, next) => {
 
 exports.createUser = createUser;
 exports.verifyUser = verifyUser;
+exports.getUsers = getUsers;
 exports.getLogs = getLogs;
