@@ -10,6 +10,8 @@ router.post('/login', userActions.verifyUser);
 
 router.get('/users', userActions.getUsers);
 
+router.put('/users/:id', userActions.updateUser);
+
 router.get('/logs', userActions.getLogs);
 
 module.exports = router;

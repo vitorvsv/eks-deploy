@@ -164,6 +164,25 @@ const getUsers = async (req, res, next) => {
   }
 };
 
+const updateUser = async (req, res, next) => {
+  const userId = req.params.id;
+
+  try {
+    // INTENTIONALLY VULNERABLE (study purposes): req.body goes straight to the update.
+    const updatedUser = await User.findByIdAndUpdate(userId, req.body, {
+      new: true,
+    }).select('-password');
+
+    if (!updatedUser) {
+      return next(createError('User not found.', 404));
+    }
+
+    res.status(200).json({ message: 'User updated.', user: updatedUser.toObject() });
+  } catch (err) {
+    next(createError(err.message || 'Failed to update user.', 500));
+  }
+};
+
 const getLogs = (req, res, next) => {
   fs.readFile(path.join('/app', 'users', 'users-log.txt'), (err, data) => {
     if (err) {
@@ -178,4 +197,5 @@ const getLogs = (req, res, next) => {
 exports.createUser = createUser;
 exports.verifyUser = verifyUser;
 exports.getUsers = getUsers;
+exports.updateUser = updateUser;
 exports.getLogs = getLogs;
