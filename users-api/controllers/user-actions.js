@@ -166,12 +166,19 @@ const getUsers = async (req, res, next) => {
 
 const updateUser = async (req, res, next) => {
   const userId = req.params.id;
+  const email = req.body.email;
+
+  // Allowlist: only `email` can be updated. Any other field in the body is ignored.
+  if (typeof email !== 'string' || email.trim().length === 0 || !email.includes('@')) {
+    return next(createError('Invalid email.', 422));
+  }
 
   try {
-    // INTENTIONALLY VULNERABLE (study purposes): req.body goes straight to the update.
-    const updatedUser = await User.findByIdAndUpdate(userId, req.body, {
-      new: true,
-    }).select('-password');
+    const updatedUser = await User.findByIdAndUpdate(
+      userId,
+      { $set: { email: email.trim() } },
+      { new: true }
+    ).select('-password');
 
     if (!updatedUser) {
       return next(createError('User not found.', 404));
